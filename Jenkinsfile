@@ -9,7 +9,7 @@ pipeline {
   stages {
     stage('Checkout Terraform Code') {
       steps {
-        git 'https://github.com/VETRI9876/Policy-as-Code-with-OPA-Gatekeeper.git'
+        git branch: 'main', url: 'https://github.com/VETRI9876/Policy-as-Code-with-OPA-Gatekeeper.git'
       }
     }
 
