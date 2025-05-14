@@ -9,22 +9,17 @@ pipeline {
   stages {
     stage('Checkout Terraform Code') {
       steps {
-        git branch: 'main', url: 'https://github.com/VETRI9876/Policy-as-Code-with-OPA-Gatekeeper.git'
-      }
-    }
-
-    stage('Terraform Init & Apply') {
-      steps {
-        bat 'terraform init'
-        bat 'terraform apply -auto-approve'
+        bat """
+          git clone --branch main https://github.com/VETRI9876/Policy-as-Code-with-OPA-Gatekeeper.git
+        """
       }
     }
 
     stage('Configure kubectl') {
       steps {
         bat """
-        aws eks --region %AWS_REGION% update-kubeconfig --name %CLUSTER_NAME%
-        kubectl get nodes
+          echo Running kubectl get nodes...
+          kubectl get nodes
         """
       }
     }
@@ -32,10 +27,13 @@ pipeline {
     stage('Install Gatekeeper with Helm') {
       steps {
         bat """
-        helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
-        helm repo update
-        helm install gatekeeper gatekeeper/gatekeeper --namespace gatekeeper-system --create-namespace
-        kubectl rollout status deployment gatekeeper-controller-manager -n gatekeeper-system
+          echo Adding Gatekeeper Helm repository...
+          helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
+          helm repo update
+          echo Installing Gatekeeper...
+          helm install gatekeeper gatekeeper/gatekeeper --namespace gatekeeper-system --create-namespace
+          echo Waiting for Gatekeeper rollout...
+          kubectl rollout status deployment gatekeeper-controller-manager -n gatekeeper-system
         """
       }
     }
@@ -43,36 +41,58 @@ pipeline {
     stage('Apply ConstraintTemplates & Constraints') {
       steps {
         bat """
-        kubectl apply -f templates\\allowed-namespaces-template.yaml
-        kubectl apply -f constraints\\allowed-namespaces-constraint.yaml
+          echo Applying allowed-namespaces-template.yaml...
+          kubectl apply -f allowed-namespaces-template.yaml
+          kubectl get constraints --all-namespaces
 
-        kubectl apply -f templates\\k8sdenylatest-template.yaml
-        kubectl apply -f constraints\\deny-latest-constraint.yaml
+          echo Applying allowed-namespaces-constraint.yaml...
+          kubectl apply -f allowed-namespaces-constraint.yaml
+          kubectl get constraints --all-namespaces
 
-        kubectl apply -f templates\\nonroot-template.yaml
-        kubectl apply -f constraints\\nonroot-constraint.yaml
+          echo Applying k8sdenylatest-template.yaml...
+          kubectl apply -f k8sdenylatest-template.yaml
+          kubectl get constraints --all-namespaces
 
-        kubectl apply -f templates\\privileged-container-template.yaml
-        kubectl apply -f constraints\\privileged-container-constraint.yaml
+          echo Applying deny-latest-constraint.yaml...
+          kubectl apply -f deny-latest-constraint.yaml
+          kubectl get constraints --all-namespaces
+
+          echo Applying nonroot-template.yaml...
+          kubectl apply -f nonroot-template.yaml
+          kubectl get constraints --all-namespaces
+
+          echo Applying nonroot-constraint.yaml...
+          kubectl apply -f nonroot-constraint.yaml
+          kubectl get constraints --all-namespaces
+
+          echo Applying privileged-container-template.yaml...
+          kubectl apply -f privileged-container-template.yaml
+          kubectl get constraints --all-namespaces
+
+          echo Applying privileged-container-constraint.yaml...
+          kubectl apply -f privileged-container-constraint.yaml
+          kubectl get constraints --all-namespaces
         """
       }
     }
 
     stage('Deploy and Test Bad Pod') {
       steps {
-        script {
-          def output = bat(script: 'kubectl apply -f pods\\bad-pod.yaml || exit 0', returnStdout: true).trim()
-          echo "\u001B[31mBad Pod Deployment Result:\u001B[0m\n${output}"
-        }
+        bat """
+          echo Deploying bad pod...
+          kubectl apply -f bad-pod.yaml
+          echo Checking pod status...
+          kubectl get pods
+        """
       }
     }
 
     stage('Verify Gatekeeper Violations') {
       steps {
         bat """
-        echo [Gatekeeper Violations]
-        kubectl get constraints --all-namespaces
-        kubectl describe constrainttemplates
+          echo [Gatekeeper Violations]...
+          kubectl get constraints --all-namespaces
+          kubectl describe constrainttemplates
         """
       }
     }
@@ -81,6 +101,12 @@ pipeline {
   post {
     always {
       echo 'Pipeline completed.'
+    }
+    success {
+      echo 'Pipeline succeeded!'
+    }
+    failure {
+      echo 'Pipeline failed!'
     }
   }
 }
